@@ -1,3 +1,9 @@
+all:
+	gcc multisort.c -fopenmp -o multisort
+
+run: all
+	./multisort
+
 render:
 	R --quiet -e "require(rmarkdown);render('report.rmd');"
 
