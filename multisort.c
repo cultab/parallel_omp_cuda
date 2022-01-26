@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #define LIMIT 4
-#define SIZE 100
+#define SIZE 100000
 
 static int * GLOBAL_array;
 static int * GLOBAL_space;
@@ -147,7 +147,7 @@ size_t partition(int *array, size_t low, size_t high)
     size_t i = low - 1;
     size_t j = high + 1;
 
-    int pivot = array[(j + i) / 2]; // The value in the middle of the array
+    size_t pivot = array[(j + i) / 2]; // The value in the middle of the array
 
     do {
         do i++; while(array[i] < pivot); // until we find an element smaller than pivot

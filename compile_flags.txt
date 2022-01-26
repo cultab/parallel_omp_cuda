@@ -1,0 +1,10 @@
+--no-cuda-version-check
+--cuda-path=/usr/local/cuda-11.5/
+--cuda-gpu-arch=sm_61
+--cuda-host-only
+-L/usr/local/cuda-11.5/lib64
+-lcudart
+-ldl
+-lrt
+-pthread
+-Wall
