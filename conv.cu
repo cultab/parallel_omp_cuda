@@ -172,11 +172,11 @@ int main(void)
     unsigned int seed = rand();
 
     // because we can
-    // #pragma omp parallel for schedule(auto) collapse(2)
+    #pragma omp parallel for schedule(auto) collapse(2)
     for (size_t i = 0; i < size; i++) {
         for (size_t j = 0; j < size; j++) {
-            // A[i * size + j] = rand_r(&seed) % 100;
-            A[i * size + j] = rand() % 100;
+            A[i * size + j] = rand_r(&seed) % 100;
+            // A[i * size + j] = rand() % 100;
             // initialize B to all zeros;
             B[i * size + j] = 0;
             C[i * size + j] = 0;
@@ -241,4 +241,7 @@ int main(void)
 
     cudaErr(cudaFree(d_A));
     cudaErr(cudaFree(d_B));
+    cudaErr(cudaFree(d_max));
+
+    return 0;
 }
