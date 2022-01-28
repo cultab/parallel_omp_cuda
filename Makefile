@@ -6,7 +6,7 @@ run: all
 	./multisort
 
 cuda: all
-	./conv
+	bash -c 'time ./conv'
 
 render:
 	R --quiet -e "require(rmarkdown);render('report.rmd');"
