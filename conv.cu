@@ -193,9 +193,9 @@ int main(void)
     cudaLastErr();  //check for error
 
     // allocate device memory for matricies
-    cudaErr(cudaMalloc((void**)&d_A, size * size * sizeof(elem)));
-    cudaErr(cudaMalloc((void**)&d_B, size * size * sizeof(elem)));
-    cudaErr(cudaMalloc((void**)&d_max, sizeof(elem)));
+    cudaErr(cudaMalloc(&d_A, size * size * sizeof(elem)));
+    cudaErr(cudaMalloc(&d_B, size * size * sizeof(elem)));
+    cudaErr(cudaMalloc(&d_max, sizeof(elem)));
 
     // copy matricies to device (yes B as well)
     cudaErr(cudaMemcpy(d_A, A, size * size * sizeof(elem), cudaMemcpyHostToDevice));
