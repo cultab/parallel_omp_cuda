@@ -1,3 +1,4 @@
+#include <cooperative_groups.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,9 +9,9 @@
 
 // matrix size
 #define SIZE_Y 10000
-#define SIZE_X 10000
+#define SIZE_X 20000
 #define BLOCK_NUM 128
-#define THREADS_NUM 32
+#define THREADS_NUM 128
 
 // defines for the elem type
 typedef double elem;
@@ -52,88 +53,40 @@ __host__ __device__ void print_mat(elem *mat, size_t height, size_t width, const
         cudaPrintError(cudaerr, __FILE__, __LINE__);                                                                   \
     } while (0)
 
-
-// each block calculates several rows of the result,
-// a row is only ever calculated by a single block
-__global__ void col_average_distance_matrix(elem *d_A, elem *d_At, size_t size_x, size_t size_y)
+__global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t size_y)
 {
-    __shared__ elem col_average;
+    elem col_average;
 
-    int block_id = blockIdx.x;
-    int thread_id = threadIdx.x;
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    // printf("Thread(%d)\n", tid);
 
-    int col_stride = gridDim.x;
-    int row_stride = blockDim.x;
+    int stride = gridDim.x * blockDim.x;
 
-    // printf("Block(%d),Thread(%d): \n", blockId, threadId);
+    // if (tid == 0) {
+    //     printf("gridDim %d\n", gridDim.x);
+    // }
 
-    for (int i = block_id; i < size_x; i += col_stride) {
+    // printf("Thread(%d): \n", threadId);
 
-        elem local_col_sum = 0;
+    for (int i = tid; i < size_x; i += stride) {
+        col_average = d_A[0 * size_x + i];
 
-        if (thread_id == 0) {
-            col_average = 0;
+        for (int j = 1; j < size_y; j++) {
+            col_average += d_A[j * size_x + i];
         }
 
-        for (int j = thread_id; j < size_y; j += row_stride) {
-            local_col_sum += d_At[i * size_y + j];
-        }
+        // printf("Thread(%d): local [%d] = %f\n", thread_id, i, col_average);
 
-        // printf("Block(%d),Thread(%d): local [%d] = %f\n", block_id, thread_id, i, local_col_sum);
+        col_average = col_average / (elem)size_y;
 
-        local_col_sum = local_col_sum / (elem)size_y;
-
-        atomicAdd(&col_average, local_col_sum);
-
-        syncthreads();
-
-        // if (thread_id == 0) {
-        //     printf("Block(%d),Thread(%d): avg[%d] = %f\n", block_id, thread_id, i, col_average);
-        // }
-
-
-        for (int j = thread_id; j < size_y; j += row_stride) {
-            // printf("Block(%d),Thread(%d): A[%d][%d](%6.2f) -= %6.2f = %6.2f in [%d][%d]\n",
-            //     block_id,
-            //     thread_id,
-            //     i, j,
-            //     d_At[i * size_y + j],
-            //     col_average,
-            //     d_At[i * size_y + j] - col_average,
-            //     j, i
-            // );
-
-            // d_A[j * size_x + i] = d_At[i * size_y + j] - col_average;
-            d_A[i * size_y + j] = j * i;
+        for (int j = 0; j < size_y; j++) {
+            d_A[j * size_x + i] -= col_average;
         }
     }
 
 }
 
-__global__ void FindAverage (elem* A)
-{
-    int blockId = gridDim.x + blockIdx.x;
-    int threadId = blockId * blockDim.x + blockDim.x + threadIdx.x;
-
-    elem sum;
-
-    for(int i = threadId; i < SIZE_X; i+= blockDim.x * gridDim.x)
-    {
-        sum = 0;
-        for(int j = 0; j<SIZE_Y;j++)
-        {
-            sum += A[j * SIZE_X + i];
-        }
-
-        for(int j = 0; j<SIZE_Y;j++)
-        {
-            A[j * SIZE_X + i] -= sum/SIZE_Y; 
-        }
-
-    }
-}
-
-__global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t size_y, size_t size_x)
+__global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t size_y, size_t size_x)/*{{{*/
 {
     __shared__ elem block_result;
 
@@ -175,6 +128,7 @@ __global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t size_y, siz
         }
     }
 }
+/*}}}*/
 
 __global__ void matrix_trasnpose(elem* d_mat, elem* d_result, size_t size_y, size_t size_x)
 {
@@ -224,6 +178,7 @@ int main(void)
     }
 
     cudaEvent_t start, stop;
+    float   elapsedTime;
     cudaErr(cudaEventCreate(&start));
     cudaErr(cudaEventCreate(&stop));
 
@@ -250,24 +205,17 @@ int main(void)
     #endif
 
     cudaErr(cudaMemcpy(d_A, A, size_y * size_x * sizeof(elem), cudaMemcpyHostToDevice));
-
-    // transpose A
-    matrix_trasnpose<<<BLOCK_NUM, THREADS_NUM>>>(d_A, d_At, size_y, size_x);
-    cudaLastErr();
+    cudaErr(cudaMemcpy(d_At, A, size_y * size_x * sizeof(elem), cudaMemcpyHostToDevice));
 
     cudaErr(cudaEventRecord(start, 0));
-    col_average_distance_matrix<<<BLOCK_NUM, THREADS_NUM>>>(d_A, d_At, size_x, size_y);
+    col_average_distance_matrix<<<BLOCK_NUM, THREADS_NUM>>>(d_A, size_x, size_y);
     cudaLastErr();
 
     cudaErr(cudaEventRecord(stop, 0));
     cudaErr(cudaEventSynchronize(stop));
 
-    // FindAverage<<<BLOCK_NUM, THREADS_NUM>>>(d_A);
-    // cudaLastErr();
-
-    float   elapsedTime;
-    cudaErr(cudaEventElapsedTime(&elapsedTime, start, stop ));
-    printf( "Time to average:  %3.1f ms\n", elapsedTime );
+    cudaErr(cudaEventElapsedTime(&elapsedTime, start, stop));
+    printf( "Time to average:  %3.1f ms\n", elapsedTime);
 
     // copy A back to host
     cudaErr(cudaMemcpy(A, d_A, size_y * size_x * sizeof(elem), cudaMemcpyDeviceToHost));
@@ -326,3 +274,10 @@ int main(void)
 //     printf("Thread(%d,%d): Pvalue = %f\n", y, x, Pvalue);
 //     Pd[y * Width + x] = Pvalue;
 // }}}}
+
+
+
+
+/*
+
+    */
