@@ -4,7 +4,7 @@ all:
 	nvcc mat_vec.cu -o mat_vec -arch=sm_61 -forward-unknown-to-host-compiler -Wall -Wextra -Wconversion -fopenmp
 	nvcc covar.cu -o covar -arch=sm_61 -forward-unknown-to-host-compiler -Wall -Wextra -Wconversion -fopenmp
 
-run: all
+omp: all
 	./multisort
 
 cuda1: all
@@ -16,11 +16,17 @@ cuda2: all
 cuda3: all
 	bash -c 'time ./covar'
 
+clean:
+	rm -f multisort
+	rm -f conv
+	rm -f mat_vec
+	rm -f covar
+
 render:
 	R --quiet -e "require(rmarkdown);render('report.rmd');"
 
 submit:
 	cp report.pdf 171014.pdf
-	zip 171014.zip 171014.pdf
+	zip 171014.zip 171014.pdf conv.cu mat_vec.cu covar.cu Makefile
 
-.PHONY: render
+.PHONY: render submit all cuda1 cuda2 cuda3 clean

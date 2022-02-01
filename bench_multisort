@@ -1,0 +1,21 @@
+#!/bin/sh
+# $(seq 1 2 3 6 12 24 48)
+
+rm -f multisort_results.csv
+echo "elements,limit,threads,time" > multisort_results.csv
+ #                                 1000000
+for elements in 100 10000 100000 1000000 10000000; do
+    for limit in 4 10 100 1000 10000; do
+        for threads in 2 3 6 12 24 48; do
+            # run with $threads, $limit and save run time to $time
+            if [ $limit -lt 10 ] && [ $elements -gt 100000 ]; then
+                echo "Skipping test with limit=$limit and $elements elements!"
+                break
+            fi
+            echo "OMP_NUM_THREADS=$threads ./multisort $elements $limit"
+            time=$(OMP_NUM_THREADS=$threads ./multisort $elements $limit | tail -2 | sed 1q | cut -d ' ' -f 2)
+            echo "$elements,$limit,$threads,$time" >> multisort_results.csv
+        done
+    done
+done
+

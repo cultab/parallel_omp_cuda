@@ -5,8 +5,11 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define LIMIT 4
-#define SIZE 100000
+#define PRINT 0
+
+
+static unsigned int SIZE = 10000;
+static unsigned int LIMIT = 100;
 
 static int * GLOBAL_array;
 static int * GLOBAL_space;
@@ -170,8 +173,19 @@ void quicksort(int *array, size_t low, size_t high)
     }
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
+    if (argc > 0) {
+        SIZE = atoi(argv[1]);
+    }
+    if (argc > 1) {
+        LIMIT = atoi(argv[2]);
+        if (LIMIT <= 2) {
+            fprintf(stderr, "LIMIT must be at least 3! Otherwise quicksort fails.\n");
+        }
+    }
+
+    double tic, toc;
     // init a seed value for rand_r()
     seed = rand();
 
@@ -189,16 +203,31 @@ int main(void)
         array[i] = rand_r(&seed) % 100;
         space[i] = 0;
     }
+
+    #if PRINT+0
     puts("Original: ");
     print_array(array, SIZE);
+    #endif
 
-    // is this necessary?
+    tic = omp_get_wtime();
+
     #pragma omp parallel
     {
         #pragma omp single
-        multisort(array, space, SIZE);
+        {
+            printf("Using %d thread(s)!\n", omp_get_num_threads());
+            multisort(array, space, SIZE);
+        }
     }
 
+    toc = omp_get_wtime();
+
+    printf("\tTook %f seconds to sort array of %u elements,\n"
+           "\twhile falling back to quicksort for chunks with less than %u elements!\n",
+           toc - tic, SIZE, LIMIT);
+
+    #if PRINT+0
     puts("Result: ");
     print_array(array, SIZE);
+    #endif
 }

@@ -1,10 +1,10 @@
 ---
-title: "----------TITLE-------------"
+title: "Άσκηση 2ή"
 subtitle: |
     | Πανεπιστήμιο Δυτικής Αττικής
     | Τμήμα Μηχανικών Πληροφορικής και Υπολογιστών
     | \includegraphics{./img/logo.jpg}
-    | -----------ACTUAL SUBTITLE-------------
+    | Εργαστήριο Παράλληλων Συστήμάτων
 author: Ευάγγελος Κατσανδρής (cs171014@uniwa.gr)
 date: "`r Sys.setlocale('LC_TIME', 'el_GR.utf8'); format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -89,9 +89,24 @@ header-includes:
 
 \tableofcontents
 
-\listoffigures
+# Εισαγωγή
 
-\listoftables
+# Άσκηση 2Α (OpenMP)
+
+## Πρόγραμμα
+
+## Αποτελέσματα
+
+```{r, code=readLines("./graph.R"), fig.cap="Χρόνοι εκτέλεσης Multisort"}
+```
+
+# Άσκηση 2Β (CUDA)
+
+## 2D Συνέληξη
+
+## Πολλαπλασιασμός μητρώου - διανύσματος
+
+## Συνδιακύμανση
 
 \newpage
 

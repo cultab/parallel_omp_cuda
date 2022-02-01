@@ -97,13 +97,23 @@ __global__ void matrix_vector_mul(elem* d_mat, elem* d_vec, elem* d_res, size_t 
     }
 }
 
-__global__ void matrix_trasnpose(elem* d_mat, elem* d_result, size_t size_y, size_t size_x)
+/* 
+ * Transpose a matrix.
+ *
+ * @d_mat is the input matrix.
+ * @d_result is the output matrix.
+ *
+ */
+
+__global__ void matrix_transpose(elem* d_mat, elem* d_result, size_t size_y, size_t size_x)
 {
     int block_id = blockIdx.x;
     int thread_id = threadIdx.x;
 
     int row_stride = gridDim.x;
     int col_stride = blockDim.x;
+
+    // printf("Block(%d),Thread(%d): here!\n", block_id, thread_id);
 
     for (int i = block_id; i < size_y; i += row_stride) {
         for (int j = thread_id; j < size_x; j += col_stride) {
@@ -197,7 +207,7 @@ int main(void)
     cudaErr(cudaMemcpy(A_mul_x, d_A_mul_x, size_y * sizeof(elem), cudaMemcpyDeviceToHost));
 
     // get At by transposing A
-    matrix_trasnpose<<<BLOCK_NUM, THREADS_NUM>>>(d_A, d_At, size_y, size_x);
+    matrix_transpose<<<BLOCK_NUM, THREADS_NUM>>>(d_A, d_At, size_y, size_x);
     cudaLastErr();
 
     // free A from device memory

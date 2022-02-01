@@ -145,9 +145,11 @@ int main(void)
 
     size_t size = SIZE;
 
+    // print memory used per matrix (assume double type for elem)
     long long mem = ((SIZE * SIZE * (64L / 8L)) / 1024L) / 1024L; // use long long literal
     printf("\n\tAttemping to use %lld MiB per %dx%d matrix!\n\n", mem, SIZE, SIZE);
 
+    // allocate host memory
     elem *A = (elem*)malloc(sizeof(elem) * size * size);
     if (A == NULL) {
         fprintf(stderr, "Failed to allocate memory at line %d\n", __LINE__);
@@ -171,7 +173,8 @@ int main(void)
 
     unsigned int seed = rand();
 
-    // because we can
+    // initialize matricies
+    // using omp because we can
     #pragma omp parallel for schedule(auto) collapse(2)
     for (size_t i = 0; i < size; i++) {
         for (size_t j = 0; j < size; j++) {
@@ -183,7 +186,7 @@ int main(void)
         }
     }
 
-    #if PRINT
+    #if PRINT+0
     puts("Matrix A");
     print_mat(A, size, size);
     #endif
@@ -207,7 +210,7 @@ int main(void)
     cudaErr(cudaMemcpy(B,   d_B, size * size * sizeof(elem), cudaMemcpyDeviceToHost));
     cudaErr(cudaMemcpy(max, d_max,             sizeof(elem), cudaMemcpyDeviceToHost));
 
-    #if PRINT
+    #if PRINT+0
     puts("Matrix B");
     print_mat(B, size, size);
     #endif

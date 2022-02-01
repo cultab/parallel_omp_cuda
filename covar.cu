@@ -11,14 +11,11 @@
 #define SIZE_Y 2000
 #define SIZE_X 2000
 
-
 #define BLOCK_NUM 128
 #define THREADS_NUM 128
 
 // defines for the elem type
 typedef double elem;
-#define MAXELEM DBL_MAX
-#define MINELEM DBL_MIN
 
 #ifdef __CUDA_ARCH__
 #define syncthreads() __syncthreads()
@@ -38,7 +35,7 @@ __host__ __device__ void print_mat(elem *mat, size_t height, size_t width, const
     printf("%s (%ldx%ld):\n", name, height ,width);
     for (size_t i = 0; i < height; i++) {
         for (size_t j = 0; j < width; j++) {
-            printf("%12.2f ", mat[i * width + j]);
+            printf("%6.2f ", mat[i * width + j]);
         }
         printf("\n");
     }
@@ -55,6 +52,14 @@ __host__ __device__ void print_mat(elem *mat, size_t height, size_t width, const
         cudaPrintError(cudaerr, __FILE__, __LINE__);                                                                   \
     } while (0)
 
+/*
+ *
+ * Calculate the average of each column,
+ * subtract it from each element in that column.
+ *
+ * The calculation happens in-place, on the input matrix.
+ *
+ */
 __global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t size_y)
 {
     elem col_average;
@@ -64,23 +69,20 @@ __global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t siz
 
     int stride = gridDim.x * blockDim.x;
 
-    // if (tid == 0) {
-    //     printf("gridDim %d\n", gridDim.x);
-    // }
-
-    // printf("Thread(%d): \n", threadId);
 
     for (int i = tid; i < size_x; i += stride) {
         col_average = d_A[0 * size_x + i];
 
+        // find column average
         for (int j = 1; j < size_y; j++) {
             col_average += d_A[j * size_x + i];
         }
 
-        // printf("Thread(%d): local [%d] = %f\n", thread_id, i, col_average);
-
         col_average = col_average / (elem)size_y;
 
+        // printf("Thread(%d): local [%d] = %f\n", thread_id, i, col_average);
+
+        // subtract column average from each element of a column
         for (int j = 0; j < size_y; j++) {
             d_A[j * size_x + i] -= col_average;
         }
@@ -88,50 +90,75 @@ __global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t siz
 
 }
 
-__global__ void something(elem* d_A, elem* d_B, elem* d_Res, size_t size_y, size_t size_x)
-{
-    int start_x = threadIdx.x + blockIdx.x * blockDim.x;
-    int start_y = threadIdx.y + blockIdx.y * blockDim.y;
-
-    d_Res[start_y * size_x + start_x] = -35;
-}
-
-
 /*
-  ##################
-  # REALLY SLOW :( #
-  ##################
-*/
-__global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t row_A, size_t col_B, size_t com_col_A)
+ * Matrix Multiplication of 2 matrices d_A and d_B.
+ * The result is saved in d_Res.
+ *
+ * @row_A is the number of rows of d_A
+ * @col_B is the number of columns of d_B
+ * @col_A_common_row_B is the number of columns of d_A and the number of rows of d_B,
+ *                     in other words it's d_A's and d_B's common dimension.
+ *
+ * Each thread computes multiple elements of the result.
+ *
+ * In our use case
+ * the optimizations cause it to do approximatly (n^2/2)*n calculations (instead of n^3),
+ * disregarding the diagonal,
+ * where n is @col_A_common_row_B.
+ *
+ */
+__global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t row_A, size_t col_B, size_t col_A_common_row_B)
 {
+    // start element of each thread
     int start_x = threadIdx.x + blockIdx.x * blockDim.x; 
     int start_y = threadIdx.y + blockIdx.y * blockDim.y; 
 
+    // stride of each thread
     int stride_x = gridDim.x;
     int stride_y = gridDim.y;
 
     // printf("tid(%d,%d): hre!\n", start_x, start_y);
-    elem Pvalue = 0;
+
+    elem Pvalue;
+
     // each thread computes several elements of the output matrix
     for (int y = start_y; y < row_A; y += stride_y) {
         for (int x = start_x; x < col_B; x += stride_x) {
+            // if it's a square matrix only compute the upper half triangle
+            if (row_A == col_B && x < y) {
+                continue;
+            }
             Pvalue = 0;
 
-            for (int k = 0; k < com_col_A; ++k) {
+            for (int k = 0; k < col_A_common_row_B; ++k) {
                 // printf("Read from  A[%d][%d]\n"
                 //        "Read from At[%d][%d]\n", y, k, k , y);
-                Pvalue += d_A[y * com_col_A + k] * d_B[k * col_B + x];
+                Pvalue += d_A[y * col_A_common_row_B + k] * d_B[k * col_B + x];
             }
 
             // write back to the global memory
             d_Res[y* col_B + x] = Pvalue;
             // printf("Wrote %f to B[%d][%d]\n", Pvalue , y, x);
+
+            // if it's a square matrix also save the Pvalue to the diagonally symmetric element
+            if (row_A == col_B) {
+                d_Res[x* col_B + y] = Pvalue;
+            }
         }
     }
 }
     // if (x == 0 && y == 0)
     // printf("%6.2f += %6.2f * %6.2f\n", Pvalue, d_A[y * com_col_A + k], d_B[k * col_B + x]);
     // printf("--------------------\n");
+
+
+/* 
+ * Transpose a matrix.
+ *
+ * @d_mat is the input matrix.
+ * @d_result is the output matrix.
+ *
+ */
 
 __global__ void matrix_transpose(elem* d_mat, elem* d_result, size_t size_y, size_t size_x)
 {
@@ -164,6 +191,7 @@ int main(void)
     elem *B;
     elem *d_B;
 
+    // Allocate host memory
     A = (elem*)malloc(size_y * size_x * sizeof(elem));
     if (A == NULL) {
         fprintf(stderr, "Failed to allocate memory at line %d\n", __LINE__);
@@ -208,12 +236,13 @@ int main(void)
     print_mat(A, size_y, size_x, "A");
     #endif
 
+    // Copy A to device
     cudaErr(cudaMemcpy(d_A, A, size_y * size_x * sizeof(elem), cudaMemcpyHostToDevice));
-    cudaErr(cudaMemcpy(d_At, A, size_y * size_x * sizeof(elem), cudaMemcpyHostToDevice));
 
     // start clock
     cudaErr(cudaEventRecord(start, 0));
 
+    // get new matrix
     col_average_distance_matrix<<<BLOCK_NUM, THREADS_NUM>>>(d_A, size_x, size_y);
     cudaLastErr();
 
@@ -229,11 +258,12 @@ int main(void)
     cudaErr(cudaMemcpy(A, d_A, size_y * size_x * sizeof(elem), cudaMemcpyDeviceToHost));
     #endif
 
+    // transpose A into At
     matrix_transpose<<<BLOCK_NUM, THREADS_NUM>>>(d_A, d_At, size_y, size_x);
     cudaLastErr();
 
     //   32x32 =  1024  threads per block is the max
-    // 256x256 = 65536 blocks per grid is the max
+    // 256x256 = 65536 blocks per grid is the max (in order to support all compute capabilities)
     // dim3 dimBlock(32, 32);
     // dim3 dimGrid(256, 256);
     // dim3 dimBlock(1, 1);
@@ -244,6 +274,7 @@ int main(void)
     // start clock
     cudaErr(cudaEventRecord(start, 0));
 
+    // multiply A and At
     matrix_mul<<<dimGrid, dimBlock>>>(d_A, d_At, d_B, size_y, size_y, size_x);
     cudaLastErr();
 
@@ -254,9 +285,8 @@ int main(void)
     cudaErr(cudaEventElapsedTime(&elapsedTime, start, stop));
     printf("Time of second kernel:  %3.1f ms\n", elapsedTime);
 
-    // puts("Start copying");
+    // copy result to host
     cudaErr(cudaMemcpy(B, d_B, size_y * size_y * sizeof(elem), cudaMemcpyDeviceToHost));
-    // puts("End copying");
 
     #if PRINT+0
     // copy At back to host (only to print)
@@ -267,6 +297,18 @@ int main(void)
     print_mat(B, size_y, size_y, "Result");
     #endif
 
+    // Free memory
+
+    cudaErr(cudaEventDestroy(start));
+    cudaErr(cudaEventDestroy(stop));
+
+    cudaErr(cudaFree(d_A));
+    cudaErr(cudaFree(d_At));
+    cudaErr(cudaFree(d_B));
+
+    free(A);
+    free(At);
+    free(B);
 
     return 0;
 }
