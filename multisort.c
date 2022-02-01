@@ -5,11 +5,10 @@
 #include <math.h>
 #include <stdbool.h>
 
-#define PRINT 0
+#define PRINT 1
 
-
-static unsigned int SIZE = 10000;
-static unsigned int LIMIT = 100;
+static unsigned int SIZE = 100;
+static unsigned int LIMIT = 20;
 
 static int * GLOBAL_array;
 static int * GLOBAL_space;

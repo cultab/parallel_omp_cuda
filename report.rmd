@@ -1,5 +1,5 @@
 ---
-title: "Άσκηση 2ή"
+title: "Άσκηση 2^η^"
 subtitle: |
     | Πανεπιστήμιο Δυτικής Αττικής
     | Τμήμα Μηχανικών Πληροφορικής και Υπολογιστών
@@ -89,24 +89,444 @@ header-includes:
 
 \tableofcontents
 
+\newpage
+
 # Εισαγωγή
+
+Σε αυτή την εργασία μας ζητήθηκε να γράψουμε κώδικα χρησιμοποιώντας OpenMP και CUDA.
+Ο κώδικας για κάθε ερώτημα είναι αυτοτελής και βρίσκεται στα παρακάτω αρχεία:
+
+* `multisort.c` κώδικας OpenMP άσκησης 2Α
+
+* `conv.cu` κώδικας CUDA ερωτήματος Α. -- συνέληξη
+
+* `mat_vec.cu` κώδικας CUDA ερωτήματος Β -– πολ/μός μητρώου με διάνυσμα
+
+* `covar.cu` κώδικας CUDA ερωτήματος Γ -– συνδιακύμανη
+
+Μέσα στα αρχεία θα δείτε επιπλέον σχόλια πάνω στον κώδικα.
 
 # Άσκηση 2Α (OpenMP)
 
-## Πρόγραμμα
+Σε αυτή την άσκηση μας ζητήθηκε να υλοποιήσουμε τον αλγόριθμο ταξινόμησης multisort.
+Ο αλγόριθμος λειτουργεί αναδρομικά και σπάει την λίστα του σε τέσσερα κομμάτια τα οποία
+κάνει merge σε ζευγάρια και ύστερα κάνει merge τα δύο merged ζευγάρια.
+
+## Υλοποίηση
+
+### Multisort
+
+Ο κώδικας της συνάρτησης `multisort()` βασίστηκε στις διαφάνειες της θεωρίας.
+Είναι πρακτικά πανομοιότυπος με μια μικρή αλλαγή ώστε να χρησιμοποιεί σωστά την δίκια μας
+υλοποίηση της `megre()`, όπου δεν θέλουμε το μέγεθος της υπολίστας αλλά έναν δείκτη στο τέλος της.
+Έτσι αφαιρούμε το -1 από τον υπολογισμό των δεικτών τέλους των υπολιστών.
+
+Σε περίπτωση που ο αριθμός των στοιχείων μια υπολίστας είναι μικρότερος από ένα όριο,
+εφαρμόζουμε quicksort στην υπολίστα.
+
+```C
+void multisort(int *start, int *space, size_t size)
+{
+    if (size <= LIMIT) {
+        quicksort(start, 0, size - 1); /* qsort does NOT exist :| */
+        return;
+    }
+    int quarter = size / 4;
+
+    int *startA = start;
+    int *spaceA = space;
+    int *startB = startA + quarter;
+    int *spaceB = spaceA + quarter;
+    int *startC = startB + quarter;
+    int *spaceC = spaceB + quarter;
+    int *startD = startC + quarter;
+    int *spaceD = spaceC + quarter;
+
+    #pragma omp task
+    multisort(startA, spaceA, quarter);
+    #pragma omp task
+    multisort(startB, spaceB, quarter);
+    #pragma omp task
+    multisort(startC, spaceC, quarter);
+    #pragma omp task
+    multisort(startD, spaceD, size - 3 * quarter);
+    #pragma omp taskwait
+
+    #pragma omp task
+    merge(startA, startA + quarter, startB, startB + quarter, spaceA);
+    #pragma omp task
+    merge(startC, startC + quarter, startD, start + size, spaceC);
+
+    #pragma omp taskwait
+    merge(spaceA, spaceC, spaceC, spaceA + size, startA);
+}
+```
+
+### Merge
+
+Ο κώδικας της `merge()` βασίζεται στην υλοποίηση του mergesort
+που βρίσκεται στο eclass. Η χρήση δεικτών μας επιτρέπει
+να εκφράσουμε τον αλγόριθμο πολύ απλά.
+
+```C
+void merge(int *x, const int *x_end, int *y, const int *y_end, int *space)
+{
+    // until x or y reach their end
+    while (x != x_end && y != y_end) {
+        if (*x < *y) {
+            *(space++) = *(x++);
+        } else {
+            *(space++) = *(y++);
+        }
+    }
+
+    // copy remaining from x
+    while (x != x_end) {
+        *(space++) = *(x++);
+    }
+
+    // copy remaining from y
+    while (y != y_end) {
+        *(space++) = *(y++);
+    }
+}
+```
+
+### quicksort
+
+Υλοποίηση της quicksort γιατί μάθαμε πολύ αργά ότι υπάρχει υλοποίηση στην standard library ονομαζόμενη `qsort()`.
 
 ## Αποτελέσματα
 
-```{r, code=readLines("./graph.R"), fig.cap="Χρόνοι εκτέλεσης Multisort"}
+Τρέξαμε το πρόγραμμα για διάφορες τιμές limit(4 - 10.0000), αριθμό στοιχείων (100 - 10.000.000) και αριθμό νημάτων (2 - 48). 
+Στο επόμενο γράφημα θα δείτε τον χρόνο εκτέλεσης σε κάθε περίπτωση.
+Για μεγάλους αριθμούς στοιχείων δεν συμπεριλάβαμε τον χρόνο εκτέλεσης με μικρά limit, λόγω του πολύ μεγάλου χρόνου εκτέλεσης
+που προκαλούν τέτοιοι συνδυασμοί
+
+Να σημειωθεί ότι η κλίμακα του χρόνου είναι λογαριθμική.
+
+```{r, code=readLines("./graph.R"), echo=FALSE, message=FALSE, fig.cap="Χρόνοι εκτέλεσης Multisort"}
 ```
+
+Προσέχουμε 3 πράγματα από το γράφημα:
+
+1. Φυσιολογικά, όσο ο αριθμός των στοιχείων αυξάνεται τόσο αυξάνεται και ο χρόνος εκτέλεσης.
+
+2. Ότι η σωστή επιλογή limit ανάλογα με το μέγεθος της αρχικής λίστας είναι **πολύ** σημαντική.
+
+3. Ότι όταν έχει γίνει *σωστή επιλογή limit*, όσο αυξάνεται ο αριθμός των νημάτων ο χρόνος εκτέλεσης μειώνεται.
+   Αυτό σταματάει συμβαίνει μετά τα 12 νήματα, όπως θα περιμέναμε,
+   λόγο του αριθμού πυρήνων του συστήματος (Ryzen 5 3600 με 6 πυρήνες).
+
+\newpage
 
 # Άσκηση 2Β (CUDA)
 
+Η ανάπτυξη του κώδικα CUDA έγινε κυρίως σε τοπική εγκατάσταση της CUDA αλλά τρέχει κανονικά
+στον server με την TITAN, για τον άλλο server δεν είναι 100% σίγουρο.
+Υπήρχαν προβλήματα και με τον κώδικα ^[ίσως λόγο του compute capability 5.x της 750ti γιατί κάρτες με compute capability < 6.0 δεν υποστηρίζουν atomicAdd() για double] και
+λόγω του uptime του μηχανήματος.
+
 ## 2D Συνέληξη
+
+Σε αυτό το ερώτημα μας ζητήθηκε να γράψουμε kernel που υλοποιεί την πράξη
+της συνέλιξης.
+
+### Kernel Συνέληξης
+
+Το παρακάτω kernel υλοποιεί την συνέλιξη ενός πίνακα με ένα συγκεκριμένο
+και σταθερό 3x3 convolution kernel όπως και την εύρεση του μέγιστου της διαγώνιου.
+
+Όσον αφορά την συνέληξη κάθε thread υπολογίζει πολλαπλά στοιχεία του πίνακα εξόδου.
+
+Όσον αφορά την εύρεση του μέγιστου της διαγωνίου, κάθε block βρίσκει το δικό του μέγιστο
+το οποίο ένα ακριβώς thread για του κάθε block θα γράψει στην καθολική μνήμη.
+Κάθε thread εάν βρίσκεται στη διαγώνιο χρησιμοποιεί την `atomicMax()` για να γράψει σε shared memory το καινούριο μέγιστο.
+
+```C
+__global__ void convolution_max(elem *d_A,  elem *d_B, size_t height, size_t width, elem *d_max)
+{
+    // get starting position of thread
+    int start_y = blockIdx.y * blockDim.y + threadIdx.y;
+    int start_x = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // get size of each step
+    int stride_x = blockDim.x * gridDim.x;
+    int stride_y = blockDim.y * gridDim.y;
+
+    // use shared memory for a block-local minimum
+    __shared__ elem local_max;
+
+    // the thread in each block with id (0, 0) initializes the local min to whatever the minimum is
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        local_max = MINELEM;
+    }
+
+    // sync after initializing block local maximum
+    syncthreads();
+
+	double c11 = +0.2,  c21 = +0.5,  c31 = -0.8;
+	double c12 = -0.3,  c22 = +0.6,  c32 = -0.9;
+	double c13 = +0.4,  c23 = +0.7,  c33 = +0.10;
+
+	for (int i = start_y + 1; i < height - 1; i += stride_y) {
+		for (int j = start_x + 1; j < width - 1; j += stride_x) {
+			d_B[i*width + j] = c11 * d_A[(i - 1)*width + (j - 1)]  +  c12 * d_A[(i + 0)*width + (j - 1)]  +  c13 * d_A[(i + 1)*width + (j - 1)]
+				             + c21 * d_A[(i - 1)*width + (j + 0)]  +  c22 * d_A[(i + 0)*width + (j + 0)]  +  c23 * d_A[(i + 1)*width + (j + 0)]
+				             + c31 * d_A[(i - 1)*width + (j + 1)]  +  c32 * d_A[(i + 0)*width + (j + 1)]  +  c33 * d_A[(i + 1)*width + (j + 1)];
+            // if we are at the diagonal, check for a new maximum
+            if (i == j) {
+                atomicMax(&local_max, d_B[i*width + j]);
+            }
+		}
+	}
+
+    // sync after finding block local maximum
+    syncthreads();
+
+    // find the global maximum
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        atomicMax(d_max, local_max);
+    }
+}
+```
+
+\newpage
+
+### Atomic Max για double
+Επειδή χρησιμοποιούμε double για της μήτρες μας, πρέπει να υλοποιήσουμε δικιά μας
+`atomicMax()`. Αυτό μπορεί να γίνει με δύο τρόπους.
+
+Μπορεί να γίνει με την χρήση της `atomicCAS()` η οποία δεν νοιάζεται για την πραγματική τιμή
+της μνήμης στην οποία ενεργεί, απλά νοιάζεται αν οι τιμές είναι bit προς bit ίδιες. Άρα πρέπει να κάνουμε cast 
+σε data type με αντίστοιχο μέγεθος με τον double όπως ο long long.
+
+Αυτό γίνεται ελέγχοντας αν η καινούρια τιμή είναι μεγαλύτερη της παλιάς επαλειμμένα,
+μέχρι η τιμή που επιστρέφει η `atomicCAS()` να είναι η τιμή με την οποία συγκρίναμε την καινούρια τιμή.
+Αυτό λειτουργεί γιατί η `atomicCAS()` επιστρέφει την τιμή που βρήκε στη θέση μνήμης όταν έκανε την αντικατάσταση.
+Αν η τιμή που επιστράφηκε δεν ήταν ίδια με αυτή που συγκρίναμε την καινούρια τιμή τότε ανάμεσα στην σύγκριση και στην 
+κλήση της `atomicCAS()` κάποιο άλλο thread έγγραψε μια καινούρια τιμή στη θέση μνήμης. Άρα πρέπει να συγκρίνουμε την δικιά μας
+καινούρια τιμή με την καινούρια τιμή στην θέση μνήμης
+
+```C
+__device__ double atomicMax(double* address, double val)
+{
+    unsigned long long* addr_as_ull = (unsigned long long*)address;
+    unsigned long long  old = *addr_as_ull;
+    unsigned long long  assumed;
+    do {
+        assumed = old;
+        double temp = __longlong_as_double(assumed);  //  HACK: Casting magic
+        if (val > temp) {
+            old = atomicCAS(addr_as_ull, assumed, *(unsigned long long*)&val);
+        } else {
+            break;
+        }
+    } while(assumed != old);
+    return *((double*)&old);
+}
+```
+
+Άλλος τρόπος που πιθανός είναι πιο γρήγορος είναι να εκμεταλλευτούμε την ιδιότητα της CUDA όπου
+
+```C
+double a = 1;
+double b = 20;
+
+if (__longlong_as_double(a) < __longlong_as_double(b))
+    puts("Always true");
+```
+
+Δηλαδή ότι μια ανισότητα μεταξύ δυο 64bit pattern ισχύει ανεξάρτητα αν
+το pattern αυτό ερμηνευτεί σαν double ή σαν long long. Αυτό βέβαια έχει
+κάποιες εξαιρέσεις (για αυτό **δεν επιλέχθηκε** αυτός ο τρόπος) όπως την σύγκριση του
+-0 με το 0 όπου στην περίπτωση των long long δεν υπάρχει διαφορά (γιατί δεν υπάρχει -0)
+και στην περίπτωση των double (όπου -0 < 0). Άλλες εξαιρέσεις υπάρχουν πιθανός για NaN και $\mp$ Infinity.
+
+```
+__device__ double atomicMax(double* address, double val)
+    return atomicMax((long long*)address, __double_as_longlong(val));
+}
+```
+
+\newpage
 
 ## Πολλαπλασιασμός μητρώου - διανύσματος
 
+Σε αυτό το ερώτημα χρειάστηκε να γράψουμε kernel για:
+
+* αναστροφή ενός πίνακα
+
+* πολλαπλασιασμό ενός πίνακα με ένα διάνυσμα.
+
+### Kernel πολλαπλασιασμού μητρώου και διανύσματος
+
+Κάθε block υπολογίζει πολλαπλά στοιχεία του διανύσματος εξόδου.
+Κάθε thread υπολογίζει ένα κομμάτι του κάθε στοιχείου του block του και γράφει τα αποτελέσματα σε κοινή μνήμη με `atomicAdd()`.
+Στο τέλος του υπολογισμού ενός στοιχείου, ένα block γράφει το αποτέλεσμα στην καθολική μνήμη χωρίς atomic operation γιατί κάθε στοιχείο
+υπολογίζεται από ένα μόνο block.
+Υλοποιήθηκε ώστε γειτονικά thread να διαβάζουν και γράφουν σε γειτονικές θέσεις μνήμης ώστε να έχουμε coalesced memory access.
+
+```C
+__global__ void matrix_vector_mul(elem* d_mat, elem* d_vec, elem* d_res, size_t size_y, size_t size_x)
+{
+    __shared__ elem block_result;
+
+    int block_id = blockIdx.x;
+    int thread_id = threadIdx.x;
+
+    int row_stride = gridDim.x;
+    int col_stride = blockDim.x;
+
+    for (int i = block_id; i < size_y; i += row_stride) {
+
+        elem thread_result = 0;
+
+        if (thread_id == 0) {
+            block_result = 0;
+        }
+
+        for (int j = thread_id; j < size_x; j += col_stride) {
+                thread_result += d_vec[j] * d_mat[i * size_x + j];
+        }
+
+        // all threads add their local results
+        atomicAdd(&block_result, thread_result);
+
+        // wait for all threads to add their local result
+        syncthreads();
+
+        // one thread adds they the block's result to global memory
+        // non-atomically since each element gets calculated by exactly one block
+        if (thread_id == 0) {
+            d_res[i] = block_result;
+        }
+    }
+}
+```
+
+### Transpose
+
+Κάθε block υπολογίζει πολλαπλές γραμμές του ανεστραμένου πίνακα.
+Τώρα που ξαναβλέπουμε τον κώδικα βέβαια indexing τύπου `tid = blockId.x * blockDim.x + threadIdx.x`
+Πιθανός θα ήταν πιο αποδοτικό γιατί δεν υπάρχει λόγος οργάνωσης των thread σε block και σε μικρούς πίνακες
+με μεγάλα block θα έχουμε πολλά thread που δεν θα έχουν δουλειά.
+
+```C
+__global__ void matrix_transpose(elem* d_mat, elem* d_result, size_t size_y, size_t size_x)
+{
+    int block_id = blockIdx.x;
+    int thread_id = threadIdx.x;
+
+    int row_stride = gridDim.x;
+    int col_stride = blockDim.x;
+
+    for (int i = block_id; i < size_y; i += row_stride) {
+        for (int j = thread_id; j < size_x; j += col_stride) {
+            d_result[j * size_y + i] = d_mat[i * size_x + j];
+        }
+    }
+}
+```
+
+\newpage
+
 ## Συνδιακύμανση
+
+Σε αυτό το ερώτημα χρειάστηκε να γράψουμε kernel για:
+
+* τον υπολογισμό ενός πίνακα όπου από κάθε στοιχείο ενός πίνακα αφαιρούμε τον μέσο όρο της στήλης του
+
+* αναστρέφει έναν πίνακα (χρησιμοποιήθηκε ο κώδικας του προηγούμενου ερωτήματος)
+
+* πολλαπλασιασμό πινάκων
+
+### Kernel αφαίρεσης μέσου όρου στήλης
+
+Κάθε thread υπολογίζει πολλαπλές στήλες του πίνακα εξόδου.
+Πρώτα βρίσκει τον μέσο όρο μιας στήλης και μετά τον αφαιρεί από κάθε στοιχείο.
+
+Έγινε μια απόπειρα χρήσης κοινής μνήμης όπου κάθε block υπολόγιζε πολλαπλές στήλες
+και για κάθε μια τα thread του συνεργαζόντουσαν για να βρούνε τον μέσο όρο και να τον αφαιρέσουν,
+αλλά λόγο της ανάγκης χρήσης `atomicAdd()` ο χρόνος εκτέλεσης ήταν **πολύ χειρότερος**. 
+Στις περιορισμένες δοκιμές που έγιναν το kernel με κοινή μνήμη είχε χρόνο εκτέλεσης στα 150ms ενώ το
+παρακάτω kernel 30ms και λιγότερα για πίνακα 10000x20000.
+
+```C
+__global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t size_y)
+{
+    elem col_average;
+
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+    int stride = gridDim.x * blockDim.x;
+
+    for (int i = tid; i < size_x; i += stride) {
+        col_average = d_A[0 * size_x + i];
+
+        // find column average
+        for (int j = 1; j < size_y; j++) {
+            col_average += d_A[j * size_x + i];
+        }
+
+        col_average = col_average / (elem)size_y;
+
+        // subtract column average from each element of a column
+        for (int j = 0; j < size_y; j++) {
+            d_A[j * size_x + i] -= col_average;
+        }
+    }
+}
+```
+
+### Kernel πολλαπλασιασμού πινάκων
+
+Είναι η απλή υλοποίηση που σκέφτεται κάποιος όταν θέλει να υλοποιήσει πολλαπλασιασμό πινάκων
+με μια βελτιστοποίηση για τετραγωνικούς πίνακες.
+
+Όπως αναφέρεται στην εκφώνηση *τυχαίνει* στην χρήση μας (Α επί ανάστροφο Α) το αποτέλεσμα
+να είναι τετραγωνικός πίνακας. Έτσι ο κώδικας, όταν έχει ως είσοδο πίνακες Α και Β όπου ο αριθμός των γραμμών του Α είναι ίσος με τον
+αριθμό στηλών του Β, δηλαδή έχει έξοδο τετραγωνικό πίνακα, υπολογίζει κάθε στοιχείο του άνω τριγώνου μαζί με το διαγώνια συμμετρικό του.
+
+Αυτή η βελτιστοποίηση μας ρίχνει την πολυπλοκότητα για τετραγωνικούς πίνακες από $Ο(n^3)$ σε (περίπου) $Ο(\frac{n^2}{2} \dot n)$.
+
+```C
+__global__ void matrix_mul(elem* d_A, elem* d_B, elem* d_Res, size_t row_A, size_t col_B, size_t col_A_common_row_B)
+{
+    // start element of each thread
+    int start_x = threadIdx.x + blockIdx.x * blockDim.x; 
+    int start_y = threadIdx.y + blockIdx.y * blockDim.y; 
+
+    // stride of each thread
+    int stride_x = gridDim.x;
+    int stride_y = gridDim.y;
+
+    elem Pvalue;
+
+    // each thread computes several elements of the output matrix
+    for (int y = start_y; y < row_A; y += stride_y) {
+        for (int x = start_x; x < col_B; x += stride_x) {
+            // if it's a square matrix only compute the upper half triangle
+            if (row_A == col_B && x < y) {
+                continue;
+            }
+            Pvalue = 0;
+
+            for (int k = 0; k < col_A_common_row_B; ++k) {
+                Pvalue += d_A[y * col_A_common_row_B + k] * d_B[k * col_B + x];
+            }
+
+            // write back to the global memory
+            d_Res[y* col_B + x] = Pvalue;
+
+            // if it's a square matrix also save the Pvalue to the diagonally symmetric element
+            if (row_A == col_B) {
+                d_Res[x* col_B + y] = Pvalue;
+            }
+        }
+    }
+}
+```
 
 \newpage
 

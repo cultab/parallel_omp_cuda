@@ -56,7 +56,7 @@ __host__ __device__ void print_mat(elem *mat, size_t height, size_t width, const
 }
 
 
-// each block computes one element of the final vector;
+// each block computes several elements of the final vector;
 __global__ void matrix_vector_mul(elem* d_mat, elem* d_vec, elem* d_res, size_t size_y, size_t size_x)
 {
     __shared__ elem block_result;

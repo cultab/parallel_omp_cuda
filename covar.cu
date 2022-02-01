@@ -1,4 +1,3 @@
-#include <cooperative_groups.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -102,7 +101,7 @@ __global__ void col_average_distance_matrix(elem *d_A, size_t size_x, size_t siz
  * Each thread computes multiple elements of the result.
  *
  * In our use case
- * the optimizations cause it to do approximatly (n^2/2)*n calculations (instead of n^3),
+ * the optimizations cause it to do approximately (n^2/2)*n calculations (instead of n^3),
  * disregarding the diagonal,
  * where n is @col_A_common_row_B.
  *
